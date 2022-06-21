@@ -1,79 +1,102 @@
 import {useEffect, useState} from "react";
 import "./App.css";
 import axios from "axios";
+import { TodoistApi } from '@doist/todoist-api-typescript'
+const buttons = [
+  
+  {
+    type: "active",
+    label: "Active",
+  },
+  {
+    type: "done",
+    label: "Uncompleted",
+  },
+];
 
-const BACKEND_URL = "http://10.65.132.54:3000";
 
-/*
-* Plan:
-*   1. Define backend url
-*   2. Get items and show them +
-*   3. Toggle item done +
-*   4. Handle item add +
-*   5. Delete +
-*   6. Filter
-*
-* */
+const MY_TOKEN = "17e86e1ee68a9983d362dff001a62ff72ceb2786";
+const TODOIST_API = new TodoistApi('17e86e1ee68a9983d362dff001a62ff72ceb2786');
 
 function App() {
   const [itemToAdd, setItemToAdd] = useState("");
   const [items, setItems] = useState([]);
   const [searchValue, setSearchValue] = useState("");
+  const [filterType, setFilterType] = useState("active");
+  const [completedItems, setCompletedItems] = useState([]);
 
   const handleChangeItem = (event) => {
     setItemToAdd(event.target.value);
   };
 
   const handleAddItem = () => {
-    axios.post(`${BACKEND_URL}/todos`, {
-        label:itemToAdd,
-        done: false
-    }).then((response) => {
-        setItems([ ...items, response.data])
-    })
+  
+    TODOIST_API.addTask({
+      content: itemToAdd,
+      priority: 1,
+      completed: false,
+     
+    }).then((task) =>  
+        setItems([ ...items, task]
+      ))
+      .catch((error) => 
+        console.log(error)
+      )
     setItemToAdd("");
+
   };
 
+  const handleFilterItems = (type) =>{
+    setFilterType(type);
+  }
 
-  const toggleItemDone = ({ id, done }) => {
-      axios.put(`${BACKEND_URL}/todos/${id}`, {
-          done: !done
-      }).then((response) => {
-          setItems(items.map((item) => {
-              if (item.id === id) {
-                  return {
-                      ...item,
-                      done: !done
-                  }
-              }
-              return item
-          }))
-
-      })
-  };
-
-  // N => map => N
-    // N => filter => 0...N
   const handleItemDelete = (id) => {
-      axios.delete(`${BACKEND_URL}/todos/${id}`).then((response) => {
-          const deletedItem = response.data;
-          console.log('Было:',items)
-          const newItems = items.filter((item) => {
-              return deletedItem.id !== item.id
-          })
-          console.log('Осталось:',newItems)
-          setItems(newItems)
-      })
+    TODOIST_API.closeTask(id).then(() => {
+        
+        const newItems = items.filter((item) => {
+          return id !== item.id
+        })
+        setItems(newItems)
+    })
   };
+  const handleReturnInCompleted = (item) =>{
+    TODOIST_API.reopenTask(item.task_id).then(() => {
+        
+      const newItems = completedItems.filter((reItem) => {
+        return item.task_id !== reItem.id
+      })
+      if(newItems.length === completedItems -1){
+        setCompletedItems(newItems);
+        // setItems(...items, item)
+      }
+  })
+  }
+
+
 
   useEffect(() => {
-      console.log(searchValue)
-      axios.get(`${BACKEND_URL}/todos/?filter=${searchValue}`).then((response) => {
-          setItems(response.data);
-      })
-  }, [searchValue])
+      
+    TODOIST_API.getTasks()
+      .then((tasks) => setItems(tasks))
+      .catch((error) => console.log(error))
 
 
+      axios.get(`https://api.todoist.com/sync/v8/completed/get_all`,{
+        headers: {
+          Authorization: `Bearer ${MY_TOKEN}`,
+        }
+      }).then((response) => {
+        setCompletedItems(response.data.items);
+    })  
+  }, [items])
+
+
+
+
+
+  
+  const filteredItems =
+    filterType === "active" ? items : completedItems;
 
   return (
     <div className="todo-app">
@@ -91,19 +114,34 @@ function App() {
           value={searchValue}
           onChange={(event) => setSearchValue(event.target.value)}
         />
+
+        <div className="btn-group">
+          {buttons.map((item) => (
+            <button
+              onClick={() => handleFilterItems(item.type)}
+              key={item.type}
+              type="button"
+              className={`btn btn-${
+                filterType !== item.type ? "outline-" : ""
+              }info`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* List-group */}
-      <ul className="list-group todo-list">
-        {items.length > 0 ? (
-          items.map((item) => (
+      <ul className="list-group todo-list"> 
+        {filteredItems.length > 0 ? (
+          filteredItems.map((item) => (
             <li key={item.id} className="list-group-item">
-              <span className={`todo-list-item${item.done ? " done" : ""}`}>
+              <span className={`todo-list-item`}>
                 <span
                   className="todo-list-item-label"
-                  onClick={() => toggleItemDone(item)}
-                >
-                  {item.label}
+                  onClick={()=> handleReturnInCompleted(item)}
+                  >
+                  {item.content}
                 </span>
 
                 <button
